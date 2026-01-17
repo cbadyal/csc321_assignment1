@@ -14,14 +14,24 @@ def pad(message):
 def xor_bytes(a, b):
     return bytes([a[i] ^ b[i] for i in range(16)])
 
-def readBMP(filename):
-   try:
-      with open(filename, 'rb') as f:
-         bmp_bytes = f.read()
-      return bmp_bytes #data from file as a bytes object
-   except:
-      print("Error opening/reading file")
-      return None
+def urlEncode(s):
+   return s.replace(";", "%3B").replace("=", "%3D")
+
+def submit(user_input):
+   url_encoded_input = urlEncode(user_input)
+   message = f"userid=456;userdata={url_encoded_input};session-id=31337"
+   return CBC_encrypt(message.encode("ascii")) #have to convert back to ascii
+
+def verify(ciphertext):
+   cipher = AES.new(key, AES.MODE_CBC, iv)
+   padded = cipher.decrypt(ciphertext)
+   plaintext = unpad(padded, 16, style="pkcs7")
+   if (b";admin=true;" in plaintext):
+      return True
+   else:
+      return False
+   
+
   
 def CBC_encrypt(plaintext):
   CBC_output = bytearray()
@@ -36,37 +46,37 @@ def CBC_encrypt(plaintext):
     CBC_output += prev_message_enc
   return bytes(CBC_output)
 
+def bitFlip():
+   user_input = "admin/true"
+   ciphertext = submit(user_input)
+   message = f"userid=456;userdata={urlEncode(user_input)};session-id=31337".encode("ascii")
+   # Find position of '/' for bit flipping
+   slash_pos = message.index(b'/')#b'/' is bytes
+   block_num = slash_pos // 16
+   offset = slash_pos % 16
+   prev_block_start = (block_num-1) * 16
+   flip_idx = prev_block_start + offset
+   cipherFlipped = bytearray(ciphertext)
+   cipherFlipped[flip_idx] ^= (ord("/") ^ ord("="))
 
+   #decrypt both 
+   cipher = AES.new(key, AES.MODE_CBC, iv)
+   beforeFlip = unpad(cipher.decrypt(ciphertext), 16, style="pkcs7")
+   afterFlip = unpad(cipher.decrypt(bytes(cipherFlipped)), 16, style="pkcs7")
+   print("Before flip:", beforeFlip)
+   print("After flip:", afterFlip)
+   print("Changed byte index: ", flip_idx)
 
+   print("verify(original) ->", verify(ciphertext))
+   print("verify(modified) ->", verify(bytes(cipherFlipped))) 
+   #also print out the changed position or whatever
 
-
-# Original message TODO - change to include user input
-message = b'userid=456;userdata=admin/true;session-id=31337'
-print(f"Plaintext before byte-flip: {message.decode('ascii')}")
-
-
-# Generate key and IV
 key = get_random_bytes(16)
 iv = get_random_bytes(16)
 
-# Find position of '/' for bit flipping
-slash_pos = message.index(b'/')#b'/' is bytes
-
-# Encrypt
-'''
-cipher = AES.new(key, AES.MODE_CBC, iv) #want to make this EBC and loop thru each block
-padded_message = pad(message)
-ciphertext = cipher.encrypt(padded_message)
-'''
-ciphertext = CBC_encrypt(message)#handles padding, takes in bytes 
-ciphertext = bytearray(ciphertext)#make it mutable
+bitFlip()
    
 '''
-#sanity check - DELETE LATER since we can't use CBC mode, just for checking
-cbc = AES.new(key, AES.MODE_CBC, iv).encrypt(padded_message)
-assert cbc == CBC_output
-
-
 # Show ciphertext before the flip
 print("\nBefore admin/true - Ciphertext (hex):")
 ciphertext_hex = ''.join([hex(x)[2:].zfill(2) for x in ciphertext])
